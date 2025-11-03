@@ -73,14 +73,22 @@ if [ -z "$SLACK_MCP_XOXC_TOKEN" ] || [ -z "$SLACK_MCP_XOXD_TOKEN" ]; then
     exit 1
 fi
 
-# Get path to binary (from project root or script directory)
-if [ -f "$PROJECT_ROOT/MCP-servers/slack-mcp-server/slack-mcp-server" ]; then
+# Get path to binary (check build directory first, then other locations)
+if [ -f "$SCRIPT_DIR/build/slack-mcp-server" ]; then
+    BINARY="$SCRIPT_DIR/build/slack-mcp-server"
+elif [ -f "$PROJECT_ROOT/MCP-servers/slack-mcp-server/build/slack-mcp-server" ]; then
+    BINARY="$PROJECT_ROOT/MCP-servers/slack-mcp-server/build/slack-mcp-server"
+elif [ -f "$PROJECT_ROOT/MCP-servers/slack-mcp-server/slack-mcp-server" ]; then
     BINARY="$PROJECT_ROOT/MCP-servers/slack-mcp-server/slack-mcp-server"
 elif [ -f "$SCRIPT_DIR/slack-mcp-server" ]; then
     BINARY="$SCRIPT_DIR/slack-mcp-server"
 else
     echo "❌ Error: slack-mcp-server binary not found" >&2
-    echo "   Expected at: $PROJECT_ROOT/MCP-servers/slack-mcp-server/slack-mcp-server" >&2
+    echo "   Checked locations:" >&2
+    echo "   - $SCRIPT_DIR/build/slack-mcp-server" >&2
+    echo "   - $PROJECT_ROOT/MCP-servers/slack-mcp-server/build/slack-mcp-server" >&2
+    echo "   - $PROJECT_ROOT/MCP-servers/slack-mcp-server/slack-mcp-server" >&2
+    echo "   - $SCRIPT_DIR/slack-mcp-server" >&2
     exit 1
 fi
 
