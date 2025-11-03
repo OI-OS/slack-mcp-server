@@ -1,6 +1,8 @@
 # Slack MCP Server
 [![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/korotovsky/slack-mcp-server)](https://archestra.ai/mcp-catalog/korotovsky__slack-mcp-server)
 
+> **🤖 For AI Agents:** If you're an AI agent installing this server in OI OS / Brain Trust 4, see [AGENTS.md](./AGENTS.md) for complete installation instructions, parameter extractors, and intent mappings setup.
+
 Model Context Protocol (MCP) server for Slack Workspaces. The most powerful MCP Slack server — supports Stdio, SSE and HTTP transports, proxy settings, DMs, Group DMs, Smart History fetch (by date or count), may work via OAuth or in complete stealth mode with no permissions and scopes in Workspace 😏.
 
 > [!IMPORTANT]  
