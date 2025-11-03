@@ -116,6 +116,40 @@ Fetches a CSV directory of all users in the workspace.
 - [Installation](docs/02-installation.md)
 - [Configuration and Usage](docs/03-configuration-and-usage.md)
 
+### OI OS (Brain Trust 4) Setup
+
+When running the Slack MCP server on **OI OS (Brain Trust 4)**, follow these steps:
+
+1. **Set up your `.env` file** in the OI OS project root with the following variables:
+   ```bash
+   SLACK_MCP_XOXC_TOKEN=xoxc-your-token-here
+   SLACK_MCP_XOXD_TOKEN=xoxd-your-token-here
+   SLACK_MCP_ADD_MESSAGE_TOOL=true
+   ```
+
+2. **Run the cache sync script** after installing the server:
+   ```bash
+   ./MCP-servers/slack-mcp-server/sync-slack-cache.sh
+   ```
+   
+   This script initializes the cache files (`.users_cache.json` and `.channels_cache_v2.json`) that are required for full functionality. The OI connection pool closes connections quickly, which interrupts the cache sync process - this script keeps the connection alive long enough for the sync to complete (~90 seconds).
+
+3. **Verify the cache files** were created in your project root:
+   ```bash
+   ls -lh .users_cache.json .channels_cache_v2.json
+   ```
+
+**Why is cache sync needed?**
+- The cache enables channel lookups by name (`#channel-name`) instead of just IDs
+- Enables user lookups by handle (`@username`) 
+- Allows the `channels_list` tool to work properly
+- Improves performance by avoiding repeated API calls
+
+**Known working environment variables for OI OS:**
+- `SLACK_MCP_XOXC_TOKEN` - Required (Slack browser token)
+- `SLACK_MCP_XOXD_TOKEN` - Required (Slack browser cookie)
+- `SLACK_MCP_ADD_MESSAGE_TOOL=true` - Required for message posting functionality
+
 ### Environment Variables (Quick Reference)
 
 | Variable                          | Required? | Default                   | Description                                                                                                                                                                                                                                                                               |
@@ -149,6 +183,24 @@ Fetches a CSV directory of all users in the workspace.
 | :white_check_mark: | :x:                | No channels cache, tool `channels_list` will be fully not functional. Tools `conversations_*` will have limited capabilities and you won't be able to search messages by `@userHandle` or `#channel-name`, getting messages by `@userHandle` or `#channel-name` won't be available either.                                   |
 | :white_check_mark: | :white_check_mark: | No limitations, fully functional Slack MCP Server.                                                                                                                                                                                                                                                                           |
 
+### Cache Sync Script
+
+For OI OS installations, use the provided `sync-slack-cache.sh` script to initialize the cache:
+
+```bash
+# From OI OS project root
+./MCP-servers/slack-mcp-server/sync-slack-cache.sh
+```
+
+The script will:
+- Load environment variables from `.env` file
+- Start the Slack MCP server with proper JSON-RPC initialization
+- Trigger `channels_list` to sync users and channels cache
+- Create cache files in your project root directory
+- Keep the connection alive long enough for sync to complete (~90 seconds)
+
+See the script header comments for detailed usage and requirements.
+
 ### Debugging Tools
 
 ```bash
@@ -157,6 +209,9 @@ npx @modelcontextprotocol/inspector go run mcp/mcp-server.go --transport stdio
 
 # View logs
 tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
+
+# For OI OS: View sync logs
+tail -n 30 /tmp/slack-sync.log
 ```
 
 ## Security
