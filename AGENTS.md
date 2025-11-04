@@ -24,28 +24,48 @@ This guide provides comprehensive installation instructions for AI agents instal
 For AI agents using OI OS, execute the following commands:
 
 ```bash
-# 1. Install the server (if not already installed)
-git clone https://github.com/korotovsky/slack-mcp-server.git MCP-servers/slack-mcp-server
+# 1. Clone the repository (if not already installed)
+# NOTE: The 'install' command doesn't work well for Go servers that need building
+# Manual clone + build is required
+git clone https://github.com/OI-OS/slack-mcp-server.git MCP-servers/slack-mcp-server
 cd MCP-servers/slack-mcp-server
 
 # 2. Build the server
 make build
 
 # 3. Configure authentication in project root .env file
-# Add to .env:
+# Add to .env (in project root, not in slack-mcp-server directory):
 # SLACK_MCP_XOXC_TOKEN=xoxc-your-token-here
 # SLACK_MCP_XOXD_TOKEN=xoxd-your-token-here
 # SLACK_MCP_ADD_MESSAGE_TOOL=true
 
 # 4. Connect the server to OI OS
+# NOTE: brain-trust4 automatically loads .env file from project root
 cd ../../
 ./brain-trust4 connect slack-mcp-server ./MCP-servers/slack-mcp-server/build/slack-mcp-server
 
 # 5. Sync cache files (required for full functionality)
 ./MCP-servers/slack-mcp-server/sync-slack-cache.sh
+
+# 6. Create intent mappings (optional, for natural language queries)
+sqlite3 brain-trust4.db << 'SQL'
+INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
+('slack list channels', 'slack-mcp-server', 'channels_list', 10),
+('slack channels', 'slack-mcp-server', 'channels_list', 10),
+('slack post message', 'slack-mcp-server', 'conversations_add_message', 10),
+('slack post', 'slack-mcp-server', 'conversations_add_message', 10);
+SQL
+
+# 7. (Optional) Create parameter extractors and rules
+# See "Configuring Parameter Extractors" section below
+# NOTE: Parameter extraction is fragile - direct calls are more reliable
 ```
 
-**Note:** The cache sync is critical for full functionality. It enables channel lookups by name (`#channel-name`) and user lookups by handle (`@username`).
+**Important Notes:**
+- **`.env` file auto-loaded**: `brain-trust4 connect` automatically finds and loads `.env` from project root (matching pattern used for other config files like `parameter_extractors.toml`)
+- **Cache sync is critical**: Enables channel lookups by name (`#channel-name`) and user lookups by handle (`@username`)
+- **Direct calls work reliably**: Use `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'` for reliable execution
+- **Parameter extraction is fragile**: Natural language queries with intent mapping may fail parameter extraction - direct calls are recommended
 
 ---
 
@@ -180,7 +200,7 @@ From your OI OS project root:
 ./brain-trust4 connect slack-mcp-server ./MCP-servers/slack-mcp-server/build/slack-mcp-server
 ```
 
-**Note:** The server runs in stdio mode, so no additional arguments are needed. Environment variables are loaded from the `.env` file.
+**Note:** The `brain-trust4 connect` command automatically finds and loads `.env` file from the project root, matching the pattern used for other config files like `parameter_extractors.toml`. Environment variables (`SLACK_MCP_XOXC_TOKEN`, `SLACK_MCP_XOXD_TOKEN`, etc.) will be automatically available to the server process.
 
 ### Step 3: Verify Connection
 
@@ -190,6 +210,9 @@ From your OI OS project root:
 
 ./oi status slack-mcp-server
 # Should show server status and capabilities
+
+# Test with direct call (most reliable method)
+./brain-trust4 call slack-mcp-server channels_list '{"channel_types": "public_channel"}'
 ```
 
 ---
@@ -242,7 +265,16 @@ cat .channels_cache_v2.json | python3 -m json.tool | head -20
 
 ## Configuring Parameter Extractors
 
-Parameter extractors allow OI OS to automatically extract tool parameters from natural language queries. Add these patterns to your `parameter_extractors.toml` file:
+**⚠️ WARNING: Parameter extraction is fragile and may fail for complex queries.**
+
+Parameter extractors allow OI OS to automatically extract tool parameters from natural language queries. However, **direct calls are more reliable**:
+
+**Recommended Approach:**
+- Use direct calls: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
+- Use intent mappings for simple queries without parameters: `./oi "slack channels"`
+- Only use parameter extraction if you need natural language with parameters (and accept that it may fail)
+
+**If you want to configure parameter extraction anyway**, add these patterns to your `parameter_extractors.toml` file:
 
 ### Location
 
@@ -540,27 +572,25 @@ DELETE FROM intent_mappings WHERE server_name = 'slack-mcp-server';
 ### Test Intent Mappings
 
 ```bash
-# Test listing channels
+# Test listing channels (works reliably)
 ./oi "slack list channels"
+./oi "slack channels"
 
 # Test getting history
 ./oi "slack get history from #dev"
 
-# Test posting a message
+# Test posting a message (parameter extraction may fail - use direct call instead)
 ./oi "slack post message to #dev: Hello from OI OS!"
 
 # Test searching messages
 ./oi "slack search messages query: deployment"
 ```
 
-### Test Parameter Extraction
+**Note:** Parameter extraction from natural language queries is fragile. If queries fail, use direct calls (see below).
 
-```bash
-# This should automatically extract channel and message
-./oi "slack post message to #dev: WhatsApp MCP Server updated for OI OS"
-```
+### Direct Tool Calls (RECOMMENDED - Most Reliable)
 
-### Direct Tool Calls
+Direct calls bypass parameter extraction and are 100% reliable:
 
 ```bash
 # Direct tool call (bypasses intent mapping)
@@ -644,22 +674,26 @@ brew install go  # macOS
 - Restart server connection
 
 **Parameter Extraction Fails**
-- Verify parameter extractors are in `parameter_extractors.toml`
-- Check parameter rules exist in database
-- Test with direct tool call to isolate issue
+- **This is expected** - Parameter extraction from natural language is fragile
+- **Solution**: Use direct calls instead: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
+- Direct calls are 100% reliable and bypass all parameter extraction
+- Verify parameter extractors are in `parameter_extractors.toml` if you want to debug
+- Check parameter rules exist in database if you want to debug
 
 ### Connection Issues
 
 **Server Won't Connect**
 - Verify binary exists: `ls -lh build/slack-mcp-server`
 - Check binary permissions: `chmod +x build/slack-mcp-server`
-- Verify environment variables are set
+- Verify `.env` file exists in project root with correct tokens
+- Check that `brain-trust4` is loading `.env` (should happen automatically)
 - Check logs for error messages
 
 **Connection Drops Quickly**
 - Normal for OI OS - connection pool closes connections after use
 - This is why cache sync script is needed
-- Use direct tool calls or intent mappings for operations
+- **Use direct tool calls** for reliable operations: `./brain-trust4 call slack-mcp-server tool-name '{}'`
+- Intent mappings work for simple queries, but parameter extraction can fail
 
 ### Performance Issues
 
