@@ -23,6 +23,19 @@ This guide provides comprehensive installation instructions for AI agents instal
 
 ## AI Agent Quick Installation
 
+**⚠️ For AI Agents: Use Direct Calls for Reliability**
+
+AI agents should prefer **direct `brain-trust4 call` commands** over natural language queries for maximum reliability. Natural language commands can timeout or have parameter extraction issues. Direct calls bypass intent mapping and parameter extraction, providing consistent results.
+
+**Example:**
+```bash
+# ✅ RECOMMENDED for AI agents: Direct call
+./brain-trust4 call slack-mcp-server conversations_add_message '{"channel_id": "#dev", "payload": "Hello"}'
+
+# ⚠️ FALLBACK: Natural language (may timeout or fail parameter extraction)
+./oi "slack post dev Hello"
+```
+
 For AI agents using OI OS, execute the following commands:
 
 ```bash
@@ -107,24 +120,25 @@ COMMIT;
 SQL
 
 # 7. Generate/append parameter extractors to TOML file (REQUIRED for parameter extraction)
-# Create or append to parameter_extractors.toml in project root
-cat >> parameter_extractors.toml << 'SLACK_EXTRACTORS'
+# ⚠️ CRITICAL: OI OS loads parameter_extractors.toml.default, not parameter_extractors.toml
+# Add patterns to parameter_extractors.toml.default in project root
+cat >> parameter_extractors.toml.default << 'SLACK_EXTRACTORS'
 
 # ============================================================================
 # SLACK MCP SERVER EXTRACTION PATTERNS
 # ============================================================================
 
-# Channel ID - Extract Slack channel ID (Cxxxxxxxxxx) or channel name (#general, @username_dm)
+# Channel ID - Extract Slack channel ID (Cxxxxxxxxxx), channel name (#general), or bare name (dev)
 "channel_id" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
 "Extract channel ID from query" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
-"slack-mcp-server::conversations_add_message.channel_id" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
-"slack-mcp-server::conversations_add_message.Extract channel" = "regex:(?:to|in|channel|#)(?:\\s+)?(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)|(C[A-Z0-9]{9,})"
+"slack-mcp-server::conversations_add_message.channel_id" = "regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*([#@]?[\\w-]+|C[A-Z0-9]{9,})"
+"slack-mcp-server::conversations_add_message.Extract channel" = "regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*([#@]?[\\w-]+|C[A-Z0-9]{9,})"
 
 # Message payload/text - Extract message content after channel
 "payload" = "keyword:after_message"
 "Extract message payload from query" = "remove:post,send,message,slack,to,in,channel"
-"slack-mcp-server::conversations_add_message.payload" = "transform:regex:(?:post|send|message|write|create)(?:\\s+post)?\\s+(?:to|in|channel)?\\s*(?:C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)\\s+(.+)$|trim"
-"slack-mcp-server::conversations_add_message.Extract message text" = "transform:regex:(?:post|send|message|write|create)(?:\\s+post)?\\s+(?:to|in|channel)?\\s*(?:C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)\\s+(.+)$|trim"
+"slack-mcp-server::conversations_add_message.payload" = "transform:regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*(?:[#@]?[\\w-]+|C[A-Z0-9]{9,})\\s+(.+)$|trim"
+"slack-mcp-server::conversations_add_message.Extract message text" = "transform:regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*(?:[#@]?[\\w-]+|C[A-Z0-9]{9,})\\s+(.+)$|trim"
 
 # Thread timestamp - Extract Slack thread timestamp (format: 1234567890.123456)
 "thread_ts" = "regex:\\d{10}\\.\\d{6}"
@@ -179,8 +193,10 @@ SLACK_EXTRACTORS
 
 **Important Notes:**
 - **`.env` file auto-loaded**: `brain-trust4 connect` automatically finds and loads `.env` from project root (matching pattern used for other config files like `parameter_extractors.toml`)
+- **For AI Agents**: Prefer direct calls (`./brain-trust4 call`) over natural language commands for reliability
+- **For End Users**: Natural language commands (`./oi "slack post..."`) provide better UX but may timeout
 - **Cache sync is critical**: Enables channel lookups by name (`#channel-name`) and user lookups by handle (`@username`)
-- **NOTE (Backup Option)**: For direct tool calls bypassing intent mapping, use: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
+- **Direct Calls**: Use `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'` to bypass intent mapping and parameter extraction
 
 ---
 
@@ -380,13 +396,17 @@ cat .channels_cache_v2.json | python3 -m json.tool | head -20
 
 ## Configuring Parameter Extractors
 
-Parameter extractors allow OI OS to automatically extract tool parameters from natural language queries. Add these patterns to your `parameter_extractors.toml` file:
+Parameter extractors allow OI OS to automatically extract tool parameters from natural language queries.
+
+**⚠️ CRITICAL: File Loading Priority**
+
+OI OS loads parameter extractors from `parameter_extractors.toml.default` in the project root, **not** from `parameter_extractors.toml`. The system prioritizes the `.default` file, so patterns must be added there for them to be loaded.
 
 **NOTE (Backup Option)**: For direct tool calls bypassing intent mapping and parameter extraction, use: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
 
 ### Location
 
-Add to: `parameter_extractors.toml` in your OI OS project root (or `~/.oi/parameter_extractors.toml`).
+Add to: `parameter_extractors.toml.default` in your OI OS project root (this is the file that's actually loaded).
 
 ### Slack Parameter Extractors
 
@@ -395,17 +415,19 @@ Add to: `parameter_extractors.toml` in your OI OS project root (or `~/.oi/parame
 # SLACK MCP SERVER EXTRACTION PATTERNS
 # ============================================================================
 
-# Channel ID - Extract Slack channel ID (Cxxxxxxxxxx) or channel name (#general, @username_dm)
+# Channel ID - Extract Slack channel ID (Cxxxxxxxxxx), channel name (#general), or bare name (dev)
+# Supports: "slack post dev message", "slack post #dev message", "slack post C09QF4P842G message"
 "channel_id" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
 "Extract channel ID from query" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
-"slack-mcp-server::conversations_add_message.channel_id" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
-"slack-mcp-server::conversations_add_message.Extract channel" = "regex:(?:to|in|channel|#)(?:\\s+)?(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)|(C[A-Z0-9]{9,})"
+"slack-mcp-server::conversations_add_message.channel_id" = "regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*([#@]?[\\w-]+|C[A-Z0-9]{9,})"
+"slack-mcp-server::conversations_add_message.Extract channel" = "regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*([#@]?[\\w-]+|C[A-Z0-9]{9,})"
 
 # Message payload/text - Extract message content after channel
+# Supports: "slack post dev easy as pie" → extracts "easy as pie"
 "payload" = "keyword:after_message"
 "Extract message payload from query" = "remove:post,send,message,slack,to,in,channel"
-"slack-mcp-server::conversations_add_message.payload" = "transform:regex:(?:post|send|message|write|create)(?:\\s+post)?\\s+(?:to|in|channel)?\\s*(?:C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)\\s+(.+)$|trim"
-"slack-mcp-server::conversations_add_message.Extract message text" = "transform:regex:(?:post|send|message|write|create)(?:\\s+post)?\\s+(?:to|in|channel)?\\s*(?:C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)\\s+(.+)$|trim"
+"slack-mcp-server::conversations_add_message.payload" = "transform:regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*(?:[#@]?[\\w-]+|C[A-Z0-9]{9,})\\s+(.+)$|trim"
+"slack-mcp-server::conversations_add_message.Extract message text" = "transform:regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*(?:[#@]?[\\w-]+|C[A-Z0-9]{9,})\\s+(.+)$|trim"
 
 # Thread timestamp - Extract Slack thread timestamp (format: 1234567890.123456)
 "thread_ts" = "regex:\\d{10}\\.\\d{6}"
@@ -457,13 +479,15 @@ Add to: `parameter_extractors.toml` in your OI OS project root (or `~/.oi/parame
 "sort" = "conditional:if_contains:popularity|then:default:popularity|else:default:"
 ```
 
-### Adding to parameter_extractors.toml
+### Adding to parameter_extractors.toml.default
+
+**⚠️ IMPORTANT**: Add patterns to `parameter_extractors.toml.default`, not `parameter_extractors.toml`.
 
 You can either:
-1. **Manual Edit**: Open `parameter_extractors.toml` and add the patterns above
+1. **Manual Edit**: Open `parameter_extractors.toml.default` and add the patterns above
 2. **Append Script** (for AI agents):
    ```bash
-   cat >> parameter_extractors.toml << 'SLACK_EXTRACTORS'
+   cat >> parameter_extractors.toml.default << 'SLACK_EXTRACTORS'
    # Slack patterns (paste patterns above)
    SLACK_EXTRACTORS
    ```
@@ -845,10 +869,17 @@ brew install go  # macOS
 - Restart server connection
 
 **Parameter Extraction Fails**
-- Verify parameter extractors are in `parameter_extractors.toml`
+- **CRITICAL**: Verify parameter extractors are in `parameter_extractors.toml.default` (not `parameter_extractors.toml`)
 - Check parameter rules exist in database
 - Verify required fields are correctly marked in parameter rules
+- Test with debug output: `DEBUG=1 ./oi "slack post dev test" 2>&1 | grep -E "(Pattern|Extract|Generated)"`
 - **NOTE (Backup)**: Use direct calls if needed: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
+
+**Patterns Not Loading / Extractors Not Found**
+- **Root Cause**: OI OS loads `parameter_extractors.toml.default`, not `parameter_extractors.toml`
+- **Fix**: Add patterns to `parameter_extractors.toml.default` in project root
+- **Verification**: Check debug output for "Loaded X custom extraction patterns" - should show patterns loading
+- **Pattern Format**: Ensure patterns handle bare channel names (e.g., "dev" without "#") for natural language queries
 
 **"text must be a string" Error (Slack Message Posting)**
 - **Root Cause**: The `payload` field is not being extracted because it's marked as optional in the parameter rule
@@ -981,4 +1012,33 @@ DEBUG=1 ./oi brain "slack post message to #general Hello from OI!" --test-params
 You should see both `channel_id` and `payload` in the generated parameters.
 
 **Prevention**: When creating parameter rules, ensure all fields that need to be extracted from natural language queries are marked as required, even if they're technically optional in the tool's API signature.
+
+### Parameter Extractors File Location Issue
+
+**Issue**: Parameter extractors are not loading, showing "Loaded 0 custom extraction patterns" in debug output, or patterns are not being found.
+
+**Root Cause**: OI OS loads parameter extractors from `parameter_extractors.toml.default` in the project root, **not** from `parameter_extractors.toml`. The system prioritizes the `.default` file.
+
+**Fix**: Add patterns to `parameter_extractors.toml.default`:
+
+```bash
+# Add patterns to the correct file
+cat >> parameter_extractors.toml.default << 'SLACK_EXTRACTORS'
+# Slack patterns here
+SLACK_EXTRACTORS
+```
+
+**Verification**: Check if extractors are loading:
+```bash
+DEBUG=1 ./oi "test" 2>&1 | grep -E "(Loaded|Merged).*patterns"
+```
+Should show: `✅ Loaded X custom extraction patterns` (where X > 0)
+
+**Pattern Improvements**: The updated patterns handle:
+- Bare channel names: `slack post dev message` (extracts "dev" as channel)
+- Channel names with #: `slack post #dev message` (extracts "#dev")
+- Channel IDs: `slack post C09QF4P842G message` (extracts channel ID)
+- Natural language: `slack post dev easy as pie` (extracts "dev" and "easy as pie")
+
+**Prevention**: Always add patterns to `parameter_extractors.toml.default`, not `parameter_extractors.toml`.
 
