@@ -1,5 +1,3 @@
 # Slack MCP Server
 
-> **📘 For OI OS / Brain Trust 4:** See [OI.md](./OI.md) for complete installation and configuration guide.
-
-This is the Slack MCP Server for OI OS. For detailed installation and usage instructions, please see [OI.md](./OI.md).
+> **⚠️ AI AGENTS: For OI OS / Brain Trust 4 installations, you MUST follow the installation instructions in [OI.md](./OI.md). This file contains the complete setup guide specifically for OI OS environments.**
