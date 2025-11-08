@@ -49,8 +49,11 @@ cd ../../
 # 5. Sync cache files (required for full functionality)
 ./MCP-servers/slack-mcp-server/sync-slack-cache.sh
 
-# 6. Create intent mappings (optional, for natural language queries)
+# 6. Create intent mappings and parameter rules (single optimized transaction)
 sqlite3 brain-trust4.db << 'SQL'
+BEGIN TRANSACTION;
+
+-- Intent mappings (all 21 mappings for 5 tools)
 INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
 ('slack list channels', 'slack-mcp-server', 'channels_list', 10),
 ('slack channels', 'slack-mcp-server', 'channels_list', 10),
@@ -73,10 +76,36 @@ INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priorit
 ('slack search messages', 'slack-mcp-server', 'conversations_search_messages', 10),
 ('slack search', 'slack-mcp-server', 'conversations_search_messages', 10),
 ('slack find messages', 'slack-mcp-server', 'conversations_search_messages', 10);
+
+-- Parameter rules (all 5 tools)
+-- conversations_add_message: channel_id and payload are REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_add_message', 'slack-mcp-server::conversations_add_message', '["channel_id", "payload"]',
+'{"channel_id": {"FromQuery": "slack-mcp-server::conversations_add_message.channel_id"}, "payload": {"FromQuery": "slack-mcp-server::conversations_add_message.payload"}, "content_type": {"FromQuery": "slack-mcp-server::conversations_add_message.content_type"}, "thread_ts": {"FromQuery": "thread_ts"}}', '[]');
+
+-- channels_list: channel_types is REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'channels_list', 'slack-mcp-server::channels_list', '["channel_types"]',
+'{"channel_types": {"FromQuery": "slack-mcp-server::channels_list.channel_types"}, "limit": {"FromQuery": "slack-mcp-server::channels_list.limit"}, "sort": {"FromQuery": "sort"}, "cursor": {"FromQuery": "cursor"}}', '[]');
+
+-- conversations_history: channel_id is REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_history', 'slack-mcp-server::conversations_history', '["channel_id"]',
+'{"channel_id": {"FromQuery": "slack-mcp-server::conversations_history.channel_id"}, "limit": {"FromQuery": "slack-mcp-server::conversations_history.limit"}, "cursor": {"FromQuery": "cursor"}, "include_activity_messages": {"FromQuery": "include_activity_messages"}}', '[]');
+
+-- conversations_replies: channel_id and thread_ts are REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_replies', 'slack-mcp-server::conversations_replies', '["channel_id", "thread_ts"]',
+'{"channel_id": {"FromQuery": "slack-mcp-server::conversations_replies.channel_id"}, "thread_ts": {"FromQuery": "slack-mcp-server::conversations_replies.thread_ts"}, "limit": {"FromQuery": "slack-mcp-server::conversations_replies.limit"}, "cursor": {"FromQuery": "cursor"}, "include_activity_messages": {"FromQuery": "include_activity_messages"}}', '[]');
+
+-- conversations_search_messages: no required fields (all optional)
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_search_messages', 'slack-mcp-server::conversations_search_messages', '[]',
+'{"search_query": {"FromQuery": "slack-mcp-server::conversations_search_messages.search_query"}, "limit": {"FromQuery": "slack-mcp-server::conversations_search_messages.limit"}, "filter_in_channel": {"FromQuery": "filter_in_channel"}, "filter_users_from": {"FromQuery": "filter_users_from"}, "filter_date_after": {"FromQuery": "filter_date_after"}, "filter_date_before": {"FromQuery": "filter_date_before"}, "cursor": {"FromQuery": "cursor"}}', '[]');
+
+COMMIT;
 SQL
 
-# 7. Create parameter rules in database (REQUIRED for parameter extraction)
-# See "Creating Parameter Rules" section below
 # NOTE: Parameter extraction is fragile - direct calls are more reliable
 ```
 
@@ -395,9 +424,10 @@ Parameter rules define which fields are required and how to extract them from na
 
 ### Creating Parameter Rules
 
-Run these SQL statements to create parameter rules for all Slack tools:
+Run this optimized SQL transaction to create all parameter rules in a single operation:
 
 ```sql
+BEGIN TRANSACTION;
 -- conversations_add_message: channel_id and payload are REQUIRED
 INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
 ('slack-mcp-server', 'conversations_add_message', 'slack-mcp-server::conversations_add_message', '["channel_id", "payload"]',
@@ -422,6 +452,8 @@ INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, 
 INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
 ('slack-mcp-server', 'conversations_search_messages', 'slack-mcp-server::conversations_search_messages', '[]',
 '{"search_query": {"FromQuery": "slack-mcp-server::conversations_search_messages.search_query"}, "limit": {"FromQuery": "slack-mcp-server::conversations_search_messages.limit"}, "filter_in_channel": {"FromQuery": "filter_in_channel"}, "filter_users_from": {"FromQuery": "filter_users_from"}, "filter_date_after": {"FromQuery": "filter_date_after"}, "filter_date_before": {"FromQuery": "filter_date_before"}, "cursor": {"FromQuery": "cursor"}}', '[]');
+
+COMMIT;
 ```
 
 ### Critical Fix: Making Payload Required
@@ -506,47 +538,7 @@ CREATE TABLE intent_mappings (
 
 ### All Slack MCP Server Intent Mappings
 
-Run these SQL INSERT statements to create intent mappings for all Slack tools:
-
-```sql
--- Channel listing
-INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
-('slack list channels', 'slack-mcp-server', 'channels_list', 10),
-('slack channels', 'slack-mcp-server', 'channels_list', 10),
-('slack show channels', 'slack-mcp-server', 'channels_list', 10),
-('slack get channels', 'slack-mcp-server', 'channels_list', 10);
-
--- Message history
-INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
-('slack channel history', 'slack-mcp-server', 'conversations_history', 10),
-('slack get history', 'slack-mcp-server', 'conversations_history', 10),
-('slack show history', 'slack-mcp-server', 'conversations_history', 10),
-('slack messages', 'slack-mcp-server', 'conversations_history', 10),
-('slack recent messages', 'slack-mcp-server', 'conversations_history', 10);
-
--- Thread replies
-INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
-('slack thread replies', 'slack-mcp-server', 'conversations_replies', 10),
-('slack get replies', 'slack-mcp-server', 'conversations_replies', 10),
-('slack show replies', 'slack-mcp-server', 'conversations_replies', 10),
-('slack thread messages', 'slack-mcp-server', 'conversations_replies', 10);
-
--- Post message
-INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
-('slack post message', 'slack-mcp-server', 'conversations_add_message', 10),
-('slack send message', 'slack-mcp-server', 'conversations_add_message', 10),
-('slack write message', 'slack-mcp-server', 'conversations_add_message', 10),
-('slack create post', 'slack-mcp-server', 'conversations_add_message', 10),
-('slack post', 'slack-mcp-server', 'conversations_add_message', 10);
-
--- Search messages
-INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
-('slack search messages', 'slack-mcp-server', 'conversations_search_messages', 10),
-('slack search', 'slack-mcp-server', 'conversations_search_messages', 10),
-('slack find messages', 'slack-mcp-server', 'conversations_search_messages', 10);
-```
-
-### Alternative: Single SQL Statement
+Run this optimized single SQL statement to create all intent mappings:
 
 ```sql
 INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
