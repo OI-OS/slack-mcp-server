@@ -12,10 +12,12 @@ This guide provides comprehensive installation instructions for AI agents instal
 6. [Connecting to OI OS](#connecting-to-oi-os)
 7. [Syncing Cache Files](#syncing-cache-files)
 8. [Configuring Parameter Extractors](#configuring-parameter-extractors)
-9. [Creating Intent Mappings](#creating-intent-mappings)
-10. [End User Setup](#end-user-setup)
-11. [Verification & Testing](#verification--testing)
-12. [Troubleshooting](#troubleshooting)
+9. [Creating Parameter Rules](#creating-parameter-rules)
+10. [Creating Intent Mappings](#creating-intent-mappings)
+11. [End User Setup](#end-user-setup)
+12. [Verification & Testing](#verification--testing)
+13. [Troubleshooting](#troubleshooting)
+14. [Known Issues & Fixes](#known-issues--fixes)
 
 ---
 
@@ -56,8 +58,8 @@ INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priorit
 ('slack post', 'slack-mcp-server', 'conversations_add_message', 10);
 SQL
 
-# 7. (Optional) Create parameter extractors and rules
-# See "Configuring Parameter Extractors" section below
+# 7. Create parameter rules in database (REQUIRED for parameter extraction)
+# See "Creating Parameter Rules" section below
 # NOTE: Parameter extraction is fragile - direct calls are more reliable
 ```
 
@@ -359,6 +361,108 @@ You can either:
    # Slack patterns (paste patterns above)
    SLACK_EXTRACTORS
    ```
+
+---
+
+## Creating Parameter Rules
+
+**⚠️ CRITICAL: Parameter rules must be created in the database for parameter extraction to work.**
+
+Parameter rules define which fields are required and how to extract them from natural language queries. The OI OS parameter engine **only extracts required fields** - optional fields are skipped even if extractors exist in `parameter_extractors.toml`.
+
+### Why Parameter Rules Are Needed
+
+- **Required fields are extracted**: The parameter engine processes required fields and invokes their extractors
+- **Optional fields are skipped**: Optional fields are ignored during parameter extraction, even if extractors exist
+- **Database-driven**: Parameter rules are stored in the `parameter_rules` table in `brain-trust4.db`
+
+### Creating Parameter Rules
+
+Run these SQL statements to create parameter rules for all Slack tools:
+
+```sql
+-- conversations_add_message: channel_id and payload are REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_add_message', 'slack-mcp-server::conversations_add_message', '["channel_id", "payload"]',
+'{"channel_id": {"FromQuery": "slack-mcp-server::conversations_add_message.channel_id"}, "payload": {"FromQuery": "slack-mcp-server::conversations_add_message.payload"}, "content_type": {"FromQuery": "slack-mcp-server::conversations_add_message.content_type"}, "thread_ts": {"FromQuery": "thread_ts"}}', '[]');
+
+-- channels_list: channel_types is REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'channels_list', 'slack-mcp-server::channels_list', '["channel_types"]',
+'{"channel_types": {"FromQuery": "slack-mcp-server::channels_list.channel_types"}, "limit": {"FromQuery": "slack-mcp-server::channels_list.limit"}, "sort": {"FromQuery": "sort"}, "cursor": {"FromQuery": "cursor"}}', '[]');
+
+-- conversations_history: channel_id is REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_history', 'slack-mcp-server::conversations_history', '["channel_id"]',
+'{"channel_id": {"FromQuery": "slack-mcp-server::conversations_history.channel_id"}, "limit": {"FromQuery": "slack-mcp-server::conversations_history.limit"}, "cursor": {"FromQuery": "cursor"}, "include_activity_messages": {"FromQuery": "include_activity_messages"}}', '[]');
+
+-- conversations_replies: channel_id and thread_ts are REQUIRED
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_replies', 'slack-mcp-server::conversations_replies', '["channel_id", "thread_ts"]',
+'{"channel_id": {"FromQuery": "slack-mcp-server::conversations_replies.channel_id"}, "thread_ts": {"FromQuery": "slack-mcp-server::conversations_replies.thread_ts"}, "limit": {"FromQuery": "slack-mcp-server::conversations_replies.limit"}, "cursor": {"FromQuery": "cursor"}, "include_activity_messages": {"FromQuery": "include_activity_messages"}}', '[]');
+
+-- conversations_search_messages: no required fields (all optional)
+INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, required_fields, field_generators, patterns) VALUES
+('slack-mcp-server', 'conversations_search_messages', 'slack-mcp-server::conversations_search_messages', '[]',
+'{"search_query": {"FromQuery": "slack-mcp-server::conversations_search_messages.search_query"}, "limit": {"FromQuery": "slack-mcp-server::conversations_search_messages.limit"}, "filter_in_channel": {"FromQuery": "filter_in_channel"}, "filter_users_from": {"FromQuery": "filter_users_from"}, "filter_date_after": {"FromQuery": "filter_date_after"}, "filter_date_before": {"FromQuery": "filter_date_before"}, "cursor": {"FromQuery": "cursor"}}', '[]');
+```
+
+### Critical Fix: Making Payload Required
+
+**Problem**: If `payload` is marked as optional in the parameter rule, the parameter engine will skip it entirely, even if:
+- An extractor pattern exists in `parameter_extractors.toml`
+- The extractor pattern is correctly configured
+- The query contains the message text
+
+**Solution**: Make `payload` a required field in the parameter rule:
+
+```sql
+-- WRONG: payload is optional, so it won't be extracted
+required_fields: '["channel_id"]'
+
+-- CORRECT: payload is required, so it will be extracted
+required_fields: '["channel_id", "payload"]'
+```
+
+**Why This Works**: The OI OS parameter engine only processes fields listed in `required_fields`. Optional fields are completely skipped during parameter extraction, regardless of whether extractors exist.
+
+### Verifying Parameter Rules
+
+```bash
+# List all Slack parameter rules
+sqlite3 brain-trust4.db "SELECT tool_signature, required_fields FROM parameter_rules WHERE server_name = 'slack-mcp-server';"
+
+# Check specific tool rule
+sqlite3 brain-trust4.db "SELECT * FROM parameter_rules WHERE tool_signature = 'slack-mcp-server::conversations_add_message';"
+```
+
+### Updating Parameter Rules
+
+To update a parameter rule (e.g., to make a field required):
+
+```bash
+sqlite3 brain-trust4.db << 'SQL'
+-- Make payload required for conversations_add_message
+UPDATE parameter_rules 
+SET required_fields = '["channel_id", "payload"]' 
+WHERE tool_signature = 'slack-mcp-server::conversations_add_message';
+SQL
+```
+
+### Testing Parameter Extraction
+
+After creating parameter rules, test with debug output:
+
+```bash
+export SLACK_MCP_XOXC_TOKEN=$(grep "^SLACK_MCP_XOXC_TOKEN=" .env | cut -d'=' -f2-)
+export SLACK_MCP_XOXD_TOKEN=$(grep "^SLACK_MCP_XOXD_TOKEN=" .env | cut -d'=' -f2-)
+export SLACK_MCP_ADD_MESSAGE_TOOL=true
+
+# Test with debug output
+DEBUG=1 ./oi brain "slack post message to #general Hello from OI!" --test-params 2>&1 | grep -A 15 "Parameter Generation"
+```
+
+You should see both `channel_id` and `payload` in the generated parameters if the rule is correct.
 
 ---
 
@@ -680,6 +784,21 @@ brew install go  # macOS
 - Verify parameter extractors are in `parameter_extractors.toml` if you want to debug
 - Check parameter rules exist in database if you want to debug
 
+**"text must be a string" Error (Slack Message Posting)**
+- **Root Cause**: The `payload` field is not being extracted because it's marked as optional in the parameter rule
+- **Fix**: Make `payload` a required field in the parameter rule:
+  ```sql
+  UPDATE parameter_rules 
+  SET required_fields = '["channel_id", "payload"]' 
+  WHERE tool_signature = 'slack-mcp-server::conversations_add_message';
+  ```
+- **Why**: The OI OS parameter engine only extracts required fields. Optional fields are skipped even if extractors exist in `parameter_extractors.toml`
+- **Verification**: Check the parameter rule:
+  ```bash
+  sqlite3 brain-trust4.db "SELECT required_fields FROM parameter_rules WHERE tool_signature = 'slack-mcp-server::conversations_add_message';"
+  ```
+  Should show: `["channel_id", "payload"]` (not just `["channel_id"]`)
+
 ### Connection Issues
 
 **Server Won't Connect**
@@ -757,7 +876,44 @@ For issues specific to:
 
 ---
 
-**Last Updated:** 2025-11-03  
+**Last Updated:** 2025-11-08  
 **Compatible With:** OI OS / Brain Trust 4, Claude Desktop, Cursor  
 **Server Version:** Latest from korotovsky/slack-mcp-server
+
+---
+
+## Known Issues & Fixes
+
+### Payload Extraction Not Working
+
+**Issue**: When posting Slack messages via natural language queries (e.g., `./oi "slack post message to #general Hello!"`), the `payload` field is not extracted, resulting in errors like "text must be a string".
+
+**Root Cause**: The OI OS parameter engine only extracts fields marked as **required** in the `parameter_rules` database table. If `payload` is marked as optional, it will be skipped entirely, even if:
+- An extractor pattern exists in `parameter_extractors.toml`
+- The extractor pattern is correctly configured
+- The query contains the message text
+
+**Fix**: Make `payload` a required field in the parameter rule:
+
+```sql
+sqlite3 brain-trust4.db << 'SQL'
+UPDATE parameter_rules 
+SET required_fields = '["channel_id", "payload"]' 
+WHERE tool_signature = 'slack-mcp-server::conversations_add_message';
+SQL
+```
+
+**Verification**: After applying the fix, test with debug output:
+
+```bash
+export SLACK_MCP_XOXC_TOKEN=$(grep "^SLACK_MCP_XOXC_TOKEN=" .env | cut -d'=' -f2-)
+export SLACK_MCP_XOXD_TOKEN=$(grep "^SLACK_MCP_XOXD_TOKEN=" .env | cut -d'=' -f2-)
+export SLACK_MCP_ADD_MESSAGE_TOOL=true
+
+DEBUG=1 ./oi brain "slack post message to #general Hello from OI!" --test-params 2>&1 | grep -A 15 "Parameter Generation"
+```
+
+You should see both `channel_id` and `payload` in the generated parameters.
+
+**Prevention**: When creating parameter rules, ensure all fields that need to be extracted from natural language queries are marked as required, even if they're technically optional in the tool's API signature.
 
