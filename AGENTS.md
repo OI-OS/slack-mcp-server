@@ -54,8 +54,25 @@ sqlite3 brain-trust4.db << 'SQL'
 INSERT OR REPLACE INTO intent_mappings (keyword, server_name, tool_name, priority) VALUES 
 ('slack list channels', 'slack-mcp-server', 'channels_list', 10),
 ('slack channels', 'slack-mcp-server', 'channels_list', 10),
+('slack show channels', 'slack-mcp-server', 'channels_list', 10),
+('slack get channels', 'slack-mcp-server', 'channels_list', 10),
+('slack channel history', 'slack-mcp-server', 'conversations_history', 10),
+('slack get history', 'slack-mcp-server', 'conversations_history', 10),
+('slack show history', 'slack-mcp-server', 'conversations_history', 10),
+('slack messages', 'slack-mcp-server', 'conversations_history', 10),
+('slack recent messages', 'slack-mcp-server', 'conversations_history', 10),
+('slack thread replies', 'slack-mcp-server', 'conversations_replies', 10),
+('slack get replies', 'slack-mcp-server', 'conversations_replies', 10),
+('slack show replies', 'slack-mcp-server', 'conversations_replies', 10),
+('slack thread messages', 'slack-mcp-server', 'conversations_replies', 10),
 ('slack post message', 'slack-mcp-server', 'conversations_add_message', 10),
-('slack post', 'slack-mcp-server', 'conversations_add_message', 10);
+('slack send message', 'slack-mcp-server', 'conversations_add_message', 10),
+('slack write message', 'slack-mcp-server', 'conversations_add_message', 10),
+('slack create post', 'slack-mcp-server', 'conversations_add_message', 10),
+('slack post', 'slack-mcp-server', 'conversations_add_message', 10),
+('slack search messages', 'slack-mcp-server', 'conversations_search_messages', 10),
+('slack search', 'slack-mcp-server', 'conversations_search_messages', 10),
+('slack find messages', 'slack-mcp-server', 'conversations_search_messages', 10);
 SQL
 
 # 7. Create parameter rules in database (REQUIRED for parameter extraction)
