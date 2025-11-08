@@ -106,14 +106,81 @@ INSERT OR REPLACE INTO parameter_rules (server_name, tool_name, tool_signature, 
 COMMIT;
 SQL
 
-# NOTE: Parameter extraction is fragile - direct calls are more reliable
+# 7. Generate/append parameter extractors to TOML file (REQUIRED for parameter extraction)
+# Create or append to parameter_extractors.toml in project root
+cat >> parameter_extractors.toml << 'SLACK_EXTRACTORS'
+
+# ============================================================================
+# SLACK MCP SERVER EXTRACTION PATTERNS
+# ============================================================================
+
+# Channel ID - Extract Slack channel ID (Cxxxxxxxxxx) or channel name (#general, @username_dm)
+"channel_id" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
+"Extract channel ID from query" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
+"slack-mcp-server::conversations_add_message.channel_id" = "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)"
+"slack-mcp-server::conversations_add_message.Extract channel" = "regex:(?:to|in|channel|#)(?:\\s+)?(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)|(C[A-Z0-9]{9,})"
+
+# Message payload/text - Extract message content after channel
+"payload" = "keyword:after_message"
+"Extract message payload from query" = "remove:post,send,message,slack,to,in,channel"
+"slack-mcp-server::conversations_add_message.payload" = "transform:regex:(?:post|send|message|write|create)(?:\\s+post)?\\s+(?:to|in|channel)?\\s*(?:C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)\\s+(.+)$|trim"
+"slack-mcp-server::conversations_add_message.Extract message text" = "transform:regex:(?:post|send|message|write|create)(?:\\s+post)?\\s+(?:to|in|channel)?\\s*(?:C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)\\s+(.+)$|trim"
+
+# Thread timestamp - Extract Slack thread timestamp (format: 1234567890.123456)
+"thread_ts" = "regex:\\d{10}\\.\\d{6}"
+"Extract thread timestamp from query" = "regex:\\d{10}\\.\\d{6}"
+
+# Content type - Default to text/markdown
+"content_type" = "default:text/markdown"
+
+# Channel types for channels_list
+"channel_types" = "regex:(mpim|im|public_channel|private_channel)(?:,(?:mpim|im|public_channel|private_channel))*"
+"Extract channel types from query" = "regex:(mpim|im|public_channel|private_channel)(?:,(?:mpim|im|public_channel|private_channel))*"
+
+# Cursor for pagination
+"cursor" = "regex:[A-Za-z0-9=]+"
+"Extract cursor from query" = "regex:[A-Za-z0-9=]+"
+
+# Limit with defaults (different for different tools)
+"slack-mcp-server::channels_list.limit" = "conditional:if_matches:\\d+|then:regex:\\b\\d+\\b|else:default:100"
+"slack-mcp-server::conversations_history.limit" = "conditional:if_matches:\\d+|then:regex:\\b\\d+\\b|else:default:1d"
+"slack-mcp-server::conversations_search_messages.limit" = "conditional:if_matches:\\d+|then:regex:\\b\\d+\\b|else:default:20"
+
+# Include activity messages (boolean)
+"include_activity_messages" = "conditional:if_contains:activity|then:default:true|else:default:false"
+
+# Search query
+"search_query" = "remove:search,find,slack,messages"
+"Extract search query from query" = "remove:search,find,slack,messages"
+
+# Date filters
+"filter_date_after" = "regex:(?:after|since|from)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+|Today|Yesterday)"
+"filter_date_before" = "regex:(?:before|until|to)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+|Today|Yesterday)"
+"filter_date_during" = "regex:(?:during|in)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+)"
+"filter_date_on" = "regex:(?:on|date)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+|Today|Yesterday)"
+
+# Filter in channel
+"filter_in_channel" = "regex:(?:in|channel)\\s+(C[A-Z0-9]{9,}|G[A-Z0-9]{9,}|#[\\w-]+)"
+
+# Filter in DM/MPIM
+"filter_in_im_or_mpim" = "regex:(?:dm|direct|mpim)\\s+(D[A-Z0-9]{9,}|@[\\w-]+)"
+
+# Filter users
+"filter_users_from" = "regex:(?:from|user)\\s+(U[A-Z0-9]{9,}|@[\\w-]+)"
+"filter_users_with" = "regex:(?:with|user)\\s+(U[A-Z0-9]{9,}|@[\\w-]+)"
+
+# Filter threads only (boolean)
+"filter_threads_only" = "conditional:if_contains:thread|then:default:true|else:default:false"
+
+# Sort for channels_list
+"sort" = "conditional:if_contains:popularity|then:default:popularity|else:default:"
+SLACK_EXTRACTORS
 ```
 
 **Important Notes:**
 - **`.env` file auto-loaded**: `brain-trust4 connect` automatically finds and loads `.env` from project root (matching pattern used for other config files like `parameter_extractors.toml`)
 - **Cache sync is critical**: Enables channel lookups by name (`#channel-name`) and user lookups by handle (`@username`)
-- **Direct calls work reliably**: Use `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'` for reliable execution
-- **Parameter extraction is fragile**: Natural language queries with intent mapping may fail parameter extraction - direct calls are recommended
+- **NOTE (Backup Option)**: For direct tool calls bypassing intent mapping, use: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
 
 ---
 
@@ -313,16 +380,9 @@ cat .channels_cache_v2.json | python3 -m json.tool | head -20
 
 ## Configuring Parameter Extractors
 
-**⚠️ WARNING: Parameter extraction is fragile and may fail for complex queries.**
+Parameter extractors allow OI OS to automatically extract tool parameters from natural language queries. Add these patterns to your `parameter_extractors.toml` file:
 
-Parameter extractors allow OI OS to automatically extract tool parameters from natural language queries. However, **direct calls are more reliable**:
-
-**Recommended Approach:**
-- Use direct calls: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
-- Use intent mappings for simple queries without parameters: `./oi "slack channels"`
-- Only use parameter extraction if you need natural language with parameters (and accept that it may fail)
-
-**If you want to configure parameter extraction anyway**, add these patterns to your `parameter_extractors.toml` file:
+**NOTE (Backup Option)**: For direct tool calls bypassing intent mapping and parameter extraction, use: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
 
 ### Location
 
@@ -699,11 +759,9 @@ DELETE FROM intent_mappings WHERE server_name = 'slack-mcp-server';
 ./oi "slack search messages query: deployment"
 ```
 
-**Note:** Parameter extraction from natural language queries is fragile. If queries fail, use direct calls (see below).
+### Direct Tool Calls (Backup Option)
 
-### Direct Tool Calls (RECOMMENDED - Most Reliable)
-
-Direct calls bypass parameter extraction and are 100% reliable:
+**NOTE**: For direct tool calls bypassing intent mapping and parameter extraction:
 
 ```bash
 # Direct tool call (bypasses intent mapping)
@@ -787,11 +845,10 @@ brew install go  # macOS
 - Restart server connection
 
 **Parameter Extraction Fails**
-- **This is expected** - Parameter extraction from natural language is fragile
-- **Solution**: Use direct calls instead: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
-- Direct calls are 100% reliable and bypass all parameter extraction
-- Verify parameter extractors are in `parameter_extractors.toml` if you want to debug
-- Check parameter rules exist in database if you want to debug
+- Verify parameter extractors are in `parameter_extractors.toml`
+- Check parameter rules exist in database
+- Verify required fields are correctly marked in parameter rules
+- **NOTE (Backup)**: Use direct calls if needed: `./brain-trust4 call slack-mcp-server tool-name '{"param": "value"}'`
 
 **"text must be a string" Error (Slack Message Posting)**
 - **Root Cause**: The `payload` field is not being extracted because it's marked as optional in the parameter rule
@@ -820,8 +877,7 @@ brew install go  # macOS
 **Connection Drops Quickly**
 - Normal for OI OS - connection pool closes connections after use
 - This is why cache sync script is needed
-- **Use direct tool calls** for reliable operations: `./brain-trust4 call slack-mcp-server tool-name '{}'`
-- Intent mappings work for simple queries, but parameter extraction can fail
+- **NOTE (Backup)**: Use direct tool calls if needed: `./brain-trust4 call slack-mcp-server tool-name '{}'`
 
 ### Performance Issues
 
