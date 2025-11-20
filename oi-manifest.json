@@ -1,0 +1,154 @@
+{
+  "server_name": "slack-mcp-server",
+  "version": "1.0.0",
+  "intents": [
+    {
+      "keyword": "slack list channels",
+      "tool_name": "channels_list",
+      "priority": 10
+    },
+    {
+      "keyword": "slack channels",
+      "tool_name": "channels_list",
+      "priority": 10
+    },
+    {
+      "keyword": "slack show channels",
+      "tool_name": "channels_list",
+      "priority": 10
+    },
+    {
+      "keyword": "slack get channels",
+      "tool_name": "channels_list",
+      "priority": 10
+    },
+    {
+      "keyword": "slack channel history",
+      "tool_name": "conversations_history",
+      "priority": 10
+    },
+    {
+      "keyword": "slack get history",
+      "tool_name": "conversations_history",
+      "priority": 10
+    },
+    {
+      "keyword": "slack show history",
+      "tool_name": "conversations_history",
+      "priority": 10
+    },
+    {
+      "keyword": "slack messages",
+      "tool_name": "conversations_history",
+      "priority": 10
+    },
+    {
+      "keyword": "slack recent messages",
+      "tool_name": "conversations_history",
+      "priority": 10
+    },
+    {
+      "keyword": "slack thread replies",
+      "tool_name": "conversations_replies",
+      "priority": 10
+    },
+    {
+      "keyword": "slack get replies",
+      "tool_name": "conversations_replies",
+      "priority": 10
+    },
+    {
+      "keyword": "slack show replies",
+      "tool_name": "conversations_replies",
+      "priority": 10
+    },
+    {
+      "keyword": "slack thread messages",
+      "tool_name": "conversations_replies",
+      "priority": 10
+    },
+    {
+      "keyword": "slack post message",
+      "tool_name": "conversations_add_message",
+      "priority": 10
+    },
+    {
+      "keyword": "slack send message",
+      "tool_name": "conversations_add_message",
+      "priority": 10
+    },
+    {
+      "keyword": "slack write message",
+      "tool_name": "conversations_add_message",
+      "priority": 10
+    },
+    {
+      "keyword": "slack create post",
+      "tool_name": "conversations_add_message",
+      "priority": 10
+    },
+    {
+      "keyword": "slack post",
+      "tool_name": "conversations_add_message",
+      "priority": 10
+    },
+    {
+      "keyword": "slack search messages",
+      "tool_name": "conversations_search_messages",
+      "priority": 10
+    },
+    {
+      "keyword": "slack search",
+      "tool_name": "conversations_search_messages",
+      "priority": 10
+    },
+    {
+      "keyword": "slack find messages",
+      "tool_name": "conversations_search_messages",
+      "priority": 10
+    }
+  ],
+  "parameter_extractors": {
+    "channels_list": {
+      "slack-mcp-server::channels_list.channel_types": "regex:(mpim|im|public_channel|private_channel)(?:,(?:mpim|im|public_channel|private_channel))*",
+      "slack-mcp-server::channels_list.limit": "conditional:if_matches:\\d+|then:regex:\\b\\d+\\b|else:default:100",
+      "slack-mcp-server::channels_list.cursor": "regex:[A-Za-z0-9=]+",
+      "slack-mcp-server::channels_list.sort": "conditional:if_contains:popularity|then:default:popularity|else:default:"
+    },
+    "conversations_history": {
+      "slack-mcp-server::conversations_history.channel_id": "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)",
+      "slack-mcp-server::conversations_history.limit": "conditional:if_matches:\\d+|then:regex:\\b\\d+\\b|else:default:1d",
+      "slack-mcp-server::conversations_history.cursor": "regex:[A-Za-z0-9=]+",
+      "slack-mcp-server::conversations_history.include_activity_messages": "conditional:if_contains:activity|then:default:true|else:default:false"
+    },
+    "conversations_replies": {
+      "slack-mcp-server::conversations_replies.channel_id": "regex:(C[A-Z0-9]{9,}|#[\\w-]+|@[\\w-]+)",
+      "slack-mcp-server::conversations_replies.thread_ts": "regex:\\d{10}\\.\\d{6}",
+      "slack-mcp-server::conversations_replies.limit": "conditional:if_matches:\\d+|then:regex:\\b\\d+\\b|else:default:20",
+      "slack-mcp-server::conversations_replies.cursor": "regex:[A-Za-z0-9=]+",
+      "slack-mcp-server::conversations_replies.include_activity_messages": "conditional:if_contains:activity|then:default:true|else:default:false"
+    },
+    "conversations_add_message": {
+      "slack-mcp-server::conversations_add_message.channel_id": "regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*([#@]?[\\w-]+|C[A-Z0-9]{9,})",
+      "slack-mcp-server::conversations_add_message.payload": "transform:regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*(?:[#@]?[\\w-]+|C[A-Z0-9]{9,})\\s+(.+)$|trim",
+      "slack-mcp-server::conversations_add_message.thread_ts": "regex:\\d{10}\\.\\d{6}",
+      "slack-mcp-server::conversations_add_message.content_type": "default:text/markdown"
+    },
+    "conversations_search_messages": {
+      "slack-mcp-server::conversations_search_messages.search_query": "remove:search,find,slack,messages",
+      "slack-mcp-server::conversations_search_messages.limit": "conditional:if_matches:\\d+|then:regex:\\b\\d+\\b|else:default:20",
+      "slack-mcp-server::conversations_search_messages.filter_in_channel": "regex:(?:in|channel)\\s+(C[A-Z0-9]{9,}|G[A-Z0-9]{9,}|#[\\w-]+)",
+      "slack-mcp-server::conversations_search_messages.filter_in_im_or_mpim": "regex:(?:dm|direct|mpim)\\s+(D[A-Z0-9]{9,}|@[\\w-]+)",
+      "slack-mcp-server::conversations_search_messages.filter_users_from": "regex:(?:from|user)\\s+(U[A-Z0-9]{9,}|@[\\w-]+)",
+      "slack-mcp-server::conversations_search_messages.filter_users_with": "regex:(?:with|user)\\s+(U[A-Z0-9]{9,}|@[\\w-]+)",
+      "slack-mcp-server::conversations_search_messages.filter_date_after": "regex:(?:after|since|from)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+|Today|Yesterday)",
+      "slack-mcp-server::conversations_search_messages.filter_date_before": "regex:(?:before|until|to)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+|Today|Yesterday)",
+      "slack-mcp-server::conversations_search_messages.filter_date_during": "regex:(?:during|in)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+)",
+      "slack-mcp-server::conversations_search_messages.filter_date_on": "regex:(?:on|date)\\s+(\\d{4}-\\d{2}-\\d{2}|[A-Za-z]+|Today|Yesterday)",
+      "slack-mcp-server::conversations_search_messages.filter_threads_only": "conditional:if_contains:thread|then:default:true|else:default:false",
+      "slack-mcp-server::conversations_search_messages.cursor": "regex:[A-Za-z0-9=]+"
+    }
+  },
+  "reminder_message": "Slack MCP server requires authentication tokens (SLACK_MCP_XOXC_TOKEN, SLACK_MCP_XOXD_TOKEN) and cache sync for full functionality. Use direct calls (./brain-trust4 call) for maximum reliability. Cache sync enables channel lookups by name (#channel-name) and user lookups by handle (@username)."
+}
+
