@@ -129,8 +129,8 @@
       "slack-mcp-server::conversations_replies.include_activity_messages": "conditional:if_contains:activity|then:default:true|else:default:false"
     },
     "conversations_add_message": {
-      "slack-mcp-server::conversations_add_message.channel_id": "regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*([#@]?[\\w-]+|C[A-Z0-9]{9,})",
-      "slack-mcp-server::conversations_add_message.payload": "transform:regex:(?:slack\\s+)?(?:post|send|message|write|create)\\s+(?:to|in|channel|#)?\\s*(?:[#@]?[\\w-]+|C[A-Z0-9]{9,})\\s+(.+)$|trim",
+      "slack-mcp-server::conversations_add_message.channel_id": "regex:(?:slack\\s+)?(?:post|send|message|write|create)(?:\\s+to|\\s+in)?\\s*(?:channel\\s+)?([#@]?[\\w-]+|C[A-Z0-9]{9,})",
+      "slack-mcp-server::conversations_add_message.payload": "regex:(?:slack\\s+)?(?:post|send|message|write|create)(?:\\s+to|\\s+in)?\\s*(?:channel\\s+)?(?:[#@]?[\\w-]+|C[A-Z0-9]{9,})\\s+(.+)$",
       "slack-mcp-server::conversations_add_message.thread_ts": "regex:\\d{10}\\.\\d{6}",
       "slack-mcp-server::conversations_add_message.content_type": "default:text/markdown"
     },
